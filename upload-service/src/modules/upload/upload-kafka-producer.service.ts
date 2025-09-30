@@ -9,7 +9,13 @@ export class UploadKakfaProducerService implements OnModuleInit {
     await this.kafka.connect();
   }
 
-  async publishVideoUploaded(videoId: string, filePath: string) {
+  async publishVideoUploaded(
+    videoId: string,
+    filePath: string,
+  ): Promise<boolean> {
+    console.log('In Publish video uploaded');
+    console.log(videoId);
+    console.log(filePath);
     await this.kafka.emit('video.uploaded', {
       videoId,
       filePath,

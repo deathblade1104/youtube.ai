@@ -18,7 +18,7 @@ export interface IServerConfig {
 export default registerAs(
   CONFIG.SERVER,
   (): IServerConfig => ({
-    serviceName: 'trade-matching-service',
+    serviceName: 'upload-service',
     port: process.env.PORT as string,
     env: process.env.NODE_ENV as APP_ENV,
   }),

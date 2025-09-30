@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { ParsedTokenData } from '../auth/interface/jwtpayload.interface';
+import { ParsedTokenData } from '../../modules/auth/interface/jwtpayload.interface';
 
 export interface CustomExpressRequest extends Request {
   user?: ParsedTokenData;

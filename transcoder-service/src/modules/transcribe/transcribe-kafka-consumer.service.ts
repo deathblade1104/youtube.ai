@@ -8,7 +8,7 @@ export class TranscribeKakfaConsumerController {
 
   @EventPattern('video.uploaded')
   async handleVideoUploaded(@Payload() message: any) {
-    const data = message.value;
+    const data = message;
     this.logger.log(`📥 Received video.uploaded: ${JSON.stringify(data)}`);
 
     await new Promise((res) => setTimeout(res, 2000));
