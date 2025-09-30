@@ -1,9 +1,8 @@
 import { Module } from '@nestjs/common';
-import { TranscribeController } from './transcribe.controller';
-import { TranscribeService } from './transcribe.service';
+import { TranscribeKakfaConsumerController } from './transcribe-kafka-consumer.service';
 
 @Module({
-  controllers: [TranscribeController],
-  providers: [TranscribeService]
+  controllers: [TranscribeKakfaConsumerController],
+  //providers: [TranscribeService],
 })
 export class TranscribeModule {}
