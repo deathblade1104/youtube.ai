@@ -1,8 +1,6 @@
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import helmet from 'helmet';
-import { join } from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -30,23 +28,9 @@ async function bootstrap() {
   app.enableShutdownHooks();
   app.enableCors();
   setupSwagger(app);
-  const port = process.env.PORT || 8082;
-
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.GRPC,
-    options: {
-      url: process.env.GRPC_URL || '0.0.0.0:50051',
-      package: 'user',
-      protoPath: join(__dirname, '../src/modules/user/proto/user.proto'),
-    },
-  });
-
-  await app.startAllMicroservices();
+  const port = process.env.PORT || 8083;
   await app.listen(port);
 
-  console.log(`🚀 User Management Service running on http://localhost:${port}`);
-  console.log(
-    `UMS HTTP on :${port} | gRPC on ${process.env.GRPC_URL || '0.0.0.0:50051'}`,
-  );
+  console.log(`🚀 Upload Service running on http://localhost:${port}`);
 }
 bootstrap();
