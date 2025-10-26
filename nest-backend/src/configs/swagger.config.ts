@@ -3,8 +3,8 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 export function setupSwagger(app: INestApplication) {
   const options = new DocumentBuilder()
-    .setTitle('Trade Matching Backend API Documentation')
-    .setDescription('Trade Matching')
+    .setTitle('youtube.ai API Documentation')
+    .setDescription('Clone of Youtube with AI features')
     .setVersion('1.0.0')
     .addBearerAuth()
     .build();
