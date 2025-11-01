@@ -1,4 +1,4 @@
 export interface IBaseEntity {
-  id: number;
-  created_at: Date;
+  id: number | string;
+  created_at?: Date;
 }

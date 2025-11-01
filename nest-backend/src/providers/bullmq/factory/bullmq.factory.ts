@@ -20,6 +20,7 @@ export class BullMQConfigService implements SharedBullConfigurationFactory {
       connection: {
         host: this.cacheConfig.host,
         port: this.cacheConfig.port,
+        password: this.cacheConfig.password, // Required for Redis authentication
       },
     };
 

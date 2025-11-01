@@ -21,13 +21,14 @@ export class AuthService {
   ) {}
 
   async signup(dto: SignupDto): Promise<SignUpResponseDto> {
-    const existing = await this.userService.getUserByEmail(dto.email);
+    const existing = await this.userService.checkUserEmailExists(dto.email);
 
     if (existing) throw new ConflictException('Email already in use');
 
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(dto.password, salt);
 
+    // Create user in DB (Bloom Filter update is handled inside createUser)
     const user = await this.userService.createUser({
       name: dto.name,
       email: dto.email,

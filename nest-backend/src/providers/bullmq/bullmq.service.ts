@@ -62,4 +62,20 @@ export class BullQueueService {
 
     return await queue.addBulk(jobsArray);
   }
+
+  /**
+   * Check if a repeatable job with the given name and pattern exists
+   */
+  async hasRepeatableJob(
+    queueName: string,
+    jobName: string,
+    repeatPattern: string,
+  ): Promise<boolean> {
+    const queue = await this.getQueue(queueName);
+    const repeatableJobs = await queue.getRepeatableJobs();
+
+    return repeatableJobs.some(
+      (job) => job.name === jobName && job.pattern === repeatPattern,
+    );
+  }
 }

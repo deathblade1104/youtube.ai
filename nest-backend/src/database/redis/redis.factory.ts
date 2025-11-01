@@ -13,6 +13,7 @@ export class CacheConfigFactory implements CacheOptionsFactory {
     const cacheConfig = this.configService.getOrThrow<CacheConfig>(
       CONFIG.REDIS,
     );
+
     // Include password in URL if provided
     const redisURL = cacheConfig.password
       ? `redis://:${cacheConfig.password}@${cacheConfig.host}:${cacheConfig.port}`
@@ -22,6 +23,8 @@ export class CacheConfigFactory implements CacheOptionsFactory {
       store: redisStore,
       url: redisURL,
       ttl: cacheConfig.ttl,
+      auth_pass: cacheConfig.password,
+      password: cacheConfig.password,
     };
   }
 }

@@ -1,9 +1,9 @@
 import {
-    CallHandler,
-    ExecutionContext,
-    Injectable,
-    Logger,
-    NestInterceptor,
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  Logger,
+  NestInterceptor,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { Observable } from 'rxjs';
@@ -42,6 +42,18 @@ export class ResponseInterceptor<
     const request = ctx.getRequest<CustomExpressRequest>();
     const statusCode = response.statusCode || 200; // Default to 200 if status code is not set
 
+    // Handle case where response might not have the expected format
+    // If customResp is an object but doesn't have message/data, treat the whole thing as data
+    let message = customResp?.message || 'Operation completed successfully';
+    let data = customResp?.data;
+
+    // If customResp exists but doesn't have 'message' or 'data' properties,
+    // treat the entire response as the data
+    if (customResp && typeof customResp === 'object' && !('message' in customResp) && !('data' in customResp)) {
+      data = customResp as any;
+      message = 'Operation completed successfully';
+    }
+
     const logData = {
       status_code: statusCode,
       log_type: 'ACCESS',
@@ -50,7 +62,7 @@ export class ResponseInterceptor<
       path: request.url,
       response: {
         timestamp: new Date().toISOString(),
-        message: customResp?.message || 'Operation completed successfully',
+        message: message,
       },
     };
 
@@ -59,8 +71,8 @@ export class ResponseInterceptor<
       success: true,
       path: request.url,
       status_code: statusCode,
-      message: customResp?.message || 'Operation completed successfully',
-      data: customResp?.data,
+      message: message,
+      data: data,
     };
   }
 }

@@ -18,6 +18,7 @@ export const dataSourceOptions: DataSourceOptions = {
   entities: [
     'dist/modules/**/entities/*.entity{.ts,.js}',
     'dist/src/modules/**/entities/*.entity{.ts,.js}',
+    'dist/database/postgres/entities/*.entity{.ts,.js}',
   ],
   migrations: ['dist/database/postgres/migrations/*{.ts,.js}'],
   synchronize: true,

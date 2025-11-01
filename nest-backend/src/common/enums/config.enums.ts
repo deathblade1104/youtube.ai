@@ -6,4 +6,6 @@ export enum CONFIG {
   AWS = 'awsConfig',
   KAFKA = 'kafkaConfig',
   INTERNAL = 'internalConfig',
+  OPENSEARCH = 'opensearchConfig',
+  FFMPEG = 'ffmpegConfig',
 }

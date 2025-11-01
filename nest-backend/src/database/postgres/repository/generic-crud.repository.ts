@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   HttpException,
   InternalServerErrorException,
   Logger,
@@ -29,12 +30,23 @@ export class GenericCrudRepository<T extends IBaseEntity> {
       : this.repository;
   }
 
-  async create(createDto: DeepPartial<T>, manager?: EntityManager): Promise<T> {
+  async create(
+    createDto: DeepPartial<T>,
+    manager?: EntityManager,
+  ): Promise<T> {
     try {
       const repo = this.getRepo(manager);
       const entity = repo.create(createDto);
       return await repo.save(entity);
     } catch (error) {
+      // Handle unique constraint violation (duplicate key)
+      if (error.code === '23505' || error.code === 'ER_DUP_ENTRY') {
+        throw new ConflictException(
+          `${this.entityName} already exists with the provided criteria`,
+        );
+      }
+
+      // Handle other errors
       this.errorMessage = `Failed to create ${this.entityName}`;
       this.logger.error(this.errorMessage, error.stack);
       throw new InternalServerErrorException(this.errorMessage);
@@ -50,6 +62,14 @@ export class GenericCrudRepository<T extends IBaseEntity> {
       const entities = repo.create(createDtos);
       return await repo.save(entities);
     } catch (error) {
+      // Handle unique constraint violation (duplicate key)
+      if (error.code === '23505' || error.code === 'ER_DUP_ENTRY') {
+        throw new ConflictException(
+          `One or more ${this.entityName}s already exist`,
+        );
+      }
+
+      // Handle other errors
       this.errorMessage = `Failed to create multiple ${this.entityName}s`;
       this.logger.error(this.errorMessage, error.stack);
       throw new InternalServerErrorException(this.errorMessage);

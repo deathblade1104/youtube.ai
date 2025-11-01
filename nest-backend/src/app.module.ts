@@ -5,18 +5,19 @@ import { AppService } from './app.service';
 
 import authConfig from './configs/auth.config';
 import awsConfig from './configs/aws.config';
+import ffmpegConfig from './configs/ffmpeg.config';
+import kafkaConfig from './configs/kafka.config';
+import opensearchConfig from './configs/opensearch.config';
 import postgresConfig from './configs/postgres.config';
 import redisConfig from './configs/redis.config';
 import serverConfig from './configs/server.config';
-//import { PostgresDatabaseModule } from './database/postgres/postgres-database.module';
-import kafkaConfig from './configs/kafka.config';
+import { OpensearchModule } from './database/opensearch/opensearch.module';
 import { PostgresDatabaseModule } from './database/postgres/postgres-database.module';
 import { RedisCacheModule } from './database/redis/redis-cache.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
-import { TranscribeModule } from './modules/transcribe/transcribe.module';
-import { UploadModule } from './modules/upload/upload.module';
 import { UserModule } from './modules/user/user.module';
+import { VideosModule } from './modules/videos/videos.module';
 
 @Module({
   imports: [
@@ -30,15 +31,17 @@ import { UserModule } from './modules/user/user.module';
         awsConfig,
         postgresConfig,
         kafkaConfig,
+        opensearchConfig,
+        ffmpegConfig,
       ],
       envFilePath: '.env',
     }),
     PostgresDatabaseModule,
+    OpensearchModule,
     RedisCacheModule,
     AuthModule,
-    UploadModule,
     UserModule,
-    TranscribeModule,
+    VideosModule,
     HealthModule,
   ],
   controllers: [AppController],
