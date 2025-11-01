@@ -1,16 +1,16 @@
 import { Processor } from '@nestjs/bullmq';
-import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
-import { ClientKafka } from '@nestjs/microservices';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 import { OutboxEvent } from '../../../database/postgres/entities/outbox-event.entity';
 import { GenericWorkerHost } from '../../../providers/bullmq/generic/genericWorkerHost';
-import { OutboxService } from '../services/shared/outbox.service';
+import { KafkaProducerService } from '../../../providers/kafka/kafka-producer.service';
 import {
   OUTBOX_PUBLISHER_CONCURRENCY,
   OUTBOX_PUBLISHER_QUEUE,
 } from '../constants/video-processor.constants';
+import { OutboxService } from '../services/shared/outbox.service';
 
 export interface IOutboxPublisherData {
   outboxEventId: string;
@@ -22,21 +22,17 @@ export interface IOutboxPublisherData {
   concurrency: OUTBOX_PUBLISHER_CONCURRENCY,
 })
 @Injectable()
-export class OutboxPublisherProcessor
-  extends GenericWorkerHost<IOutboxPublisherData, void>
-  implements OnModuleInit
-{
+export class OutboxPublisherProcessor extends GenericWorkerHost<
+  IOutboxPublisherData,
+  void
+> {
   constructor(
-    @Inject('KAFKA_PRODUCER') private readonly kafka: ClientKafka,
+    private readonly kafkaProducerService: KafkaProducerService,
     @InjectRepository(OutboxEvent)
     private readonly outboxRepo: Repository<OutboxEvent>,
     private readonly outboxService: OutboxService,
   ) {
     super(OUTBOX_PUBLISHER_QUEUE, OutboxPublisherProcessor.name);
-  }
-
-  async onModuleInit() {
-    await this.kafka.connect();
   }
 
   protected getJobContext(job: Job<IOutboxPublisherData>): string {
@@ -48,10 +44,7 @@ export class OutboxPublisherProcessor
 
     try {
       // Publish to Kafka with event ID for idempotency
-      await this.kafka.emit(topic, {
-        ...payload,
-        eventId: outboxEventId, // Include event ID for idempotency
-      });
+      await this.kafkaProducerService.emit(topic, payload, outboxEventId);
 
       // Mark as published
       await this.outboxService.markAsPublished(outboxEventId);
@@ -72,4 +65,3 @@ export class OutboxPublisherProcessor
     }
   }
 }
-

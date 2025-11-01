@@ -39,6 +39,7 @@ export function CommentsSection({ videoId }: CommentsSectionProps) {
 
   useEffect(() => {
     fetchComments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
 
   const fetchComments = async () => {

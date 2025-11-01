@@ -47,12 +47,51 @@ class GenericRepository(Generic[ModelType]):
         limit: Optional[int] = None,
         order_by: Optional[str] = None,
     ) -> List[ModelType]:
-        """Find all records matching criteria."""
+        """Find all records matching criteria.
+
+        Args:
+            where: Filter criteria
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+            order_by: Order by clause (e.g., "created_at DESC", "id ASC")
+                     Can be column name or "column DESC"/"column ASC"
+        """
         query = select(self.model)
         if where:
             query = query.filter_by(**where)
         if order_by:
-            query = query.order_by(order_by)
+            # Handle string order_by (e.g., "created_at DESC" or "id ASC")
+            from sqlalchemy import text
+            order_upper = order_by.upper().strip()
+            if " DESC" in order_upper or " ASC" in order_upper:
+                # Parse "column DESC" or "column ASC"
+                parts = order_upper.split()
+                column_name = parts[0]
+                direction = parts[1] if len(parts) > 1 else "ASC"
+                # Try to get column attribute (case-insensitive)
+                column = None
+                for attr_name in dir(self.model):
+                    if attr_name.upper() == column_name and not attr_name.startswith("_"):
+                        column = getattr(self.model, attr_name)
+                        break
+
+                if column:
+                    query = query.order_by(column.desc() if direction == "DESC" else column.asc())
+                else:
+                    # Fallback to text() if column not found (e.g., SQL expression)
+                    query = query.order_by(text(order_by))
+            else:
+                # Simple column name - try to find matching attribute
+                column = None
+                for attr_name in dir(self.model):
+                    if attr_name.upper() == order_upper and not attr_name.startswith("_"):
+                        column = getattr(self.model, attr_name)
+                        break
+                if column:
+                    query = query.order_by(column)
+                else:
+                    # Fallback to text() for complex expressions
+                    query = query.order_by(text(order_by))
         if skip:
             query = query.offset(skip)
         if limit:

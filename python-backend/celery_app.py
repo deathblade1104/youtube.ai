@@ -19,8 +19,8 @@ celery_app = Celery(
 # Import tasks to ensure they're registered
 # This is required for Celery to discover and register the tasks
 try:
-    import tasks.video_summary  # noqa: F401
-    import tasks.video_transcription  # noqa: F401
+    import modules.summary.tasks.video_summary  # noqa: F401
+    import modules.transcription.tasks.video_transcription  # noqa: F401
     logger.info("✅ Successfully imported all task modules")
 except ImportError as e:
     logger.error(f"❌ Failed to import task modules: {str(e)}")

@@ -252,7 +252,18 @@ export class OpensearchService {
         body,
       });
       return true;
-    } catch (error) {
+    } catch (error: any) {
+      // Check if it's a document_missing_exception (not a critical error)
+      if (
+        error?.body?.error?.type === 'document_missing_exception' ||
+        error?.body?.error?.reason?.includes('document missing')
+      ) {
+        this.logger.debug(
+          `Document ${id} not found in index ${index} (may not exist)`,
+        );
+        return false; // Return false but don't log as error
+      }
+
       this.logger.error(
         `Error updating document in index ${index} with id ${id}`,
         error,
@@ -287,6 +298,43 @@ export class OpensearchService {
         `Error bulk updating documents in index ${index}`,
         error,
       );
+      return false;
+    }
+  }
+
+  async indexExists(indexName: string): Promise<boolean> {
+    try {
+      const { body: exists } = await this.searchClient.indices.exists({
+        index: indexName,
+      });
+      return exists;
+    } catch (error) {
+      this.logger.error(`Error checking if index ${indexName} exists:`, error);
+      return false;
+    }
+  }
+
+  async deleteIndex(indexName: string): Promise<boolean> {
+    try {
+      const { body: exists } = await this.searchClient.indices.exists({
+        index: indexName,
+      });
+
+      if (!exists) {
+        this.logger.log(
+          `Index ${indexName} does not exist, nothing to delete.`,
+        );
+        return false;
+      }
+
+      await this.searchClient.indices.delete({
+        index: indexName,
+      });
+
+      this.logger.log(`✅ Deleted OpenSearch index: ${indexName}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error deleting index ${indexName}:`, error);
       return false;
     }
   }

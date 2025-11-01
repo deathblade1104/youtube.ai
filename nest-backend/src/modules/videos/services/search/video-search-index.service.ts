@@ -101,22 +101,33 @@ export class VideoSearchIndexService {
         created_at: video.created_at.toISOString(),
       };
 
-      // Update status to INDEXING before indexing
-      await this.videoRepository.updateBy(
-        { where: { id: videoId } as any },
-        { status: VideoProcessingStatus.INDEXING },
-      );
-      // Log status change
-      await this.statusLogService
-        .logStatusChange(
-          videoId,
-          VideoProcessingStatus.INDEXING,
-          'nest-be',
-          'Starting OpenSearch indexing',
-        )
-        .catch((err) =>
-          this.logger.warn(`Failed to log status: ${err.message}`),
+      // Check if video is already in READY status (re-indexing scenario)
+      const isReindexing = video.status === VideoProcessingStatus.READY;
+
+      // Only update status to INDEXING if video is not already READY
+      // This prevents unnecessary status changes when re-indexing already-ready videos
+      if (!isReindexing) {
+        await this.videoRepository.updateBy(
+          { where: { id: videoId } as any },
+          { status: VideoProcessingStatus.INDEXING },
         );
+        // Log status change only if we actually changed the status
+        await this.statusLogService
+          .logStatusChange(
+            videoId,
+            VideoProcessingStatus.INDEXING,
+            'nest-be',
+            'Starting OpenSearch indexing',
+          )
+          .catch((err) =>
+            this.logger.warn(`Failed to log status: ${err.message}`),
+          );
+      } else {
+        // For re-indexing, just log a debug message (no status change)
+        this.logger.debug(
+          `Re-indexing video ${videoId} (already READY, skipping status change)`,
+        );
+      }
 
       // Index to OpenSearch
       await this.opensearchService.bulkCreateDocs({
@@ -129,25 +140,35 @@ export class VideoSearchIndexService {
         ],
       });
 
-      // Update status to READY after successful indexing
-      await this.videoRepository.updateBy(
-        { where: { id: videoId } as any },
-        {
-          status: VideoProcessingStatus.READY,
-          processed_at: new Date(),
-        },
-      );
-      // Log status change
-      await this.statusLogService
-        .logStatusChange(
-          videoId,
-          VideoProcessingStatus.READY,
-          'nest-be',
-          'Video fully processed and indexed',
-        )
-        .catch((err) =>
-          this.logger.warn(`Failed to log status: ${err.message}`),
+      // Update status to READY after successful indexing (only if it wasn't already READY)
+      if (!isReindexing) {
+        await this.videoRepository.updateBy(
+          { where: { id: videoId } as any },
+          {
+            status: VideoProcessingStatus.READY,
+            processed_at: new Date(),
+          },
         );
+        // Log status change only if we actually changed the status
+        await this.statusLogService
+          .logStatusChange(
+            videoId,
+            VideoProcessingStatus.READY,
+            'nest-be',
+            'Video fully processed and indexed',
+          )
+          .catch((err) =>
+            this.logger.warn(`Failed to log status: ${err.message}`),
+          );
+      } else {
+        // For re-indexing, ensure processed_at is set but don't change status or log
+        await this.videoRepository.updateBy(
+          { where: { id: videoId } as any },
+          {
+            processed_at: new Date(),
+          },
+        );
+      }
 
       this.logger.log(`✅ Indexed video ${videoId} to OpenSearch`);
     } catch (error: any) {
@@ -194,18 +215,52 @@ export class VideoSearchIndexService {
 
   /**
    * Delete video from OpenSearch
+   * Note: Currently marks video as deleted by updating status
+   * Full document deletion can be implemented in OpensearchService.deleteDocument() if needed
    */
   async deleteVideo(videoId: number): Promise<void> {
     try {
-      // Note: OpenSearchService doesn't have delete method yet
-      // We can update it or mark as deleted
       this.logger.log(`Deleting video ${videoId} from OpenSearch`);
-      // TODO: Implement delete in OpensearchService if needed
+      // Update video status to mark as deleted instead of removing from index
+      // This preserves history and allows for soft-delete patterns
+      const success = await this.opensearchService.updateDoc<{ status: string; deleted_at: string }>({
+        index: INDEX_NAME,
+        id: videoId.toString(),
+        body: {
+          doc: {
+            status: 'deleted',
+            deleted_at: new Date().toISOString(),
+          },
+        },
+      });
+
+      if (success) {
+        this.logger.log(`✅ Marked video ${videoId} as deleted in OpenSearch`);
+      } else {
+        // Document might not exist in index (e.g., never indexed or already deleted)
+        // This is not a critical error - log it but don't fail
+        this.logger.warn(
+          `⚠️ Video ${videoId} not found in OpenSearch index (may not have been indexed or already deleted)`,
+        );
+      }
     } catch (error: any) {
-      this.logger.error(
-        `Failed to delete video ${videoId} from OpenSearch: ${error.message}`,
+      // Check if it's a document_missing_exception
+      if (
+        error?.error?.type === 'document_missing_exception' ||
+        error?.message?.includes('document missing')
+      ) {
+        // Document doesn't exist - consider it already deleted
+        this.logger.log(
+          `ℹ️ Video ${videoId} not found in OpenSearch (already deleted or never indexed)`,
+        );
+        return; // Don't throw - this is not an error
+      }
+
+      // For other errors, log but don't fail the deletion process
+      this.logger.warn(
+        `⚠️ Failed to mark video ${videoId} as deleted in OpenSearch: ${error.message || error}`,
       );
-      throw error;
+      // Don't throw - OpenSearch deletion is best-effort, main deletion should continue
     }
   }
 }

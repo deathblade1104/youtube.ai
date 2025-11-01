@@ -38,4 +38,3 @@ export class VideoIndexProcessor extends GenericWorkerHost<
     this.logger.log(`✅ Successfully indexed video: videoId=${videoId}`);
   }
 }
-

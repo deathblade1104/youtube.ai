@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
@@ -30,9 +31,10 @@ import { VideoTranscript } from '../../../database/postgres/entities/video-trans
 import { GenericCrudRepository } from '../../../database/postgres/repository/generic-crud.repository';
 import { Videos } from '../entities/video.entity';
 import { VideoSearchService } from '../services/search/video-search.service';
+import { VideoDeletionService } from '../services/video-deletion.service';
 import { VideoInfoService } from '../services/video-info.service';
-import { WatchService } from '../services/watch/watch.service';
 import { VideoWatchService } from '../services/video-watch.service';
+import { WatchService } from '../services/watch/watch.service';
 
 @Controller({ path: 'videos', version: '1' })
 @ApiTags('Videos Controller')
@@ -52,6 +54,7 @@ export class VideosController {
     private readonly videoInfoService: VideoInfoService,
     private readonly watchService: WatchService,
     private readonly videoWatchService: VideoWatchService,
+    private readonly videoDeletionService: VideoDeletionService,
   ) {
     this.videoRepository = new GenericCrudRepository(videoRepo, Videos.name);
     this.transcriptRepository = new GenericCrudRepository(
@@ -161,7 +164,8 @@ export class VideosController {
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Get complete video watch data (info, summary, captions, quality options)',
+    summary:
+      'Get complete video watch data (info, summary, captions, quality options)',
   })
   @ApiParam({ name: 'id', type: Number })
   async getVideoWatchData(@Param('id', ParseIntPipe) id: number) {
@@ -293,6 +297,24 @@ export class VideosController {
         duration_seconds: transcript.duration_seconds,
         model_info: transcript.model_info,
       },
+    };
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary:
+      'Delete or cancel a video (handles both in-progress uploads and existing videos)',
+  })
+  @ApiParam({ name: 'id', type: Number })
+  async deleteVideo(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: CustomExpressRequest,
+  ) {
+    const userId = parseInt(req.user.sub);
+    await this.videoDeletionService.deleteVideo(id, userId);
+    return {
+      message: 'Video deleted successfully',
+      data: { videoId: id },
     };
   }
 }

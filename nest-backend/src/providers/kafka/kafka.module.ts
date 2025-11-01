@@ -5,6 +5,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { Partitioners } from 'kafkajs';
 import { CONFIG } from '../../common/enums/config.enums';
 import { IKafkaConfig } from '../../configs/kafka.config';
+import { KafkaProducerService } from './kafka-producer.service';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { IKafkaConfig } from '../../configs/kafka.config';
       },
     ]),
   ],
-  exports: [ClientsModule],
+  providers: [KafkaProducerService],
+  exports: [ClientsModule, KafkaProducerService],
 })
 export class KafkaModule {}

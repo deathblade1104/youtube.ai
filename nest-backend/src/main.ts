@@ -1,4 +1,4 @@
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import helmet from 'helmet';
@@ -62,7 +62,8 @@ async function bootstrap() {
   const port = process.env.PORT || 8080;
   await app.listen(port);
 
-  console.log(`🚀 Youtube Service running on http://localhost:${port}`);
-  console.log(`📨 Kafka consumers listening on: ${kafkaConfig.brokers.join(', ')}`);
+  const logger = new Logger('Bootstrap');
+  logger.log(`🚀 Youtube Service running on http://localhost:${port}`);
+  logger.log(`📨 Kafka consumers listening on: ${kafkaConfig.brokers.join(', ')}`);
 }
 bootstrap();

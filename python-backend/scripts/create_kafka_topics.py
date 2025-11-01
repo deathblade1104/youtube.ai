@@ -6,7 +6,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from kafka_client.topic_manager import create_topics
+from providers.kafka.topic_manager import create_topics
 
 # Required topics for the YouTube AI system
 REQUIRED_TOPICS = [

@@ -165,15 +165,12 @@ export class VideoProcessorService {
         }));
 
         // Write to outbox instead of direct Kafka publish
-        await this.outboxService.addToOutbox(
-          'video.transcoded',
-          {
-            id: uuidv4(),
-            videoId,
-            variants,
-            ts: new Date().toISOString(),
-          },
-        );
+        await this.outboxService.addToOutbox('video.transcoded', {
+          id: uuidv4(),
+          videoId,
+          variants,
+          ts: new Date().toISOString(),
+        });
 
         this.logger.log(
           `✅ Video processing completed successfully for video ${videoId}`,
@@ -558,7 +555,10 @@ export class VideoProcessorService {
         }
 
         // 2. Read and update playlist to use relative segment paths
-        const playlistContent = await fs.readFile(variant.playlistPath, 'utf-8');
+        const playlistContent = await fs.readFile(
+          variant.playlistPath,
+          'utf-8',
+        );
         // FFmpeg generates playlist with relative paths, which is perfect for S3
         // We'll keep the relative paths as-is since they'll work with S3 URLs
 

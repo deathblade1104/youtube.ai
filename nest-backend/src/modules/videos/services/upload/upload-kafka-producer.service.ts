@@ -1,6 +1,6 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ClientKafka } from '@nestjs/microservices';
+import { Injectable, Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
+import { KafkaProducerService } from '../../../../providers/kafka/kafka-producer.service';
 
 export interface VideoUploadedPayload {
   id: string; // Event ID (UUID)
@@ -47,14 +47,10 @@ export interface VideoFailedPayload {
 }
 
 @Injectable()
-export class UploadKakfaProducerService implements OnModuleInit {
+export class UploadKakfaProducerService {
   private readonly logger = new Logger(UploadKakfaProducerService.name);
 
-  constructor(@Inject('KAFKA_PRODUCER') private readonly kafka: ClientKafka) {}
-
-  async onModuleInit() {
-    await this.kafka.connect();
-  }
+  constructor(private readonly kafkaProducerService: KafkaProducerService) {}
 
   async publishVideoUploaded(
     videoId: number,
@@ -82,7 +78,7 @@ export class UploadKakfaProducerService implements OnModuleInit {
     this.logger.log(
       `📤 Publishing video.uploaded event: videoId=${videoId}, id=${payload.id}`,
     );
-    await this.kafka.emit('video.uploaded', payload);
+    await this.kafkaProducerService.emit('video.uploaded', payload, payload.id);
     this.logger.log(`✅ Video uploaded event published successfully`);
     return true;
   }
@@ -105,7 +101,11 @@ export class UploadKakfaProducerService implements OnModuleInit {
     this.logger.log(
       `📤 Publishing video.transcoded event: videoId=${videoId}, id=${payload.id}`,
     );
-    await this.kafka.emit('video.transcoded', payload);
+    await this.kafkaProducerService.emit(
+      'video.transcoded',
+      payload,
+      payload.id,
+    );
     this.logger.log(`✅ Video transcoded event published successfully`);
     return true;
   }
@@ -126,7 +126,11 @@ export class UploadKakfaProducerService implements OnModuleInit {
     this.logger.log(
       `📤 Publishing video.transcribed event: videoId=${videoId}, id=${payload.id}`,
     );
-    await this.kafka.emit('video.transcribed', payload);
+    await this.kafkaProducerService.emit(
+      'video.transcribed',
+      payload,
+      payload.id,
+    );
     this.logger.log(`✅ Video transcribed event published successfully`);
     return true;
   }
@@ -149,9 +153,8 @@ export class UploadKakfaProducerService implements OnModuleInit {
     this.logger.log(
       `📤 Publishing video.failed event: videoId=${videoId}, stage=${stage}, id=${payload.id}`,
     );
-    await this.kafka.emit('video.failed', payload);
+    await this.kafkaProducerService.emit('video.failed', payload, payload.id);
     this.logger.log(`✅ Video failed event published successfully`);
     return true;
   }
 }
-

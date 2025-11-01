@@ -1,22 +1,17 @@
 import {
-    Controller,
-    Get,
-    NotFoundException,
-    Param,
-    ParseIntPipe,
-    Query,
-    Req,
-    Res,
-    UnauthorizedException,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  ParseIntPipe,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import {
-    ApiOperation,
-    ApiParam,
-    ApiQuery,
-    ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { CONFIG } from '../../../common/enums/config.enums';
 import { IAuthConfig } from '../../../configs/auth.config';
@@ -43,7 +38,8 @@ export class WatchController {
   @ApiQuery({
     name: 'token',
     required: false,
-    description: 'JWT token for authentication (alternative to Authorization header)',
+    description:
+      'JWT token for authentication (alternative to Authorization header)',
   })
   async getHLSManifest(
     @Param('videoId', ParseIntPipe) videoId: number,
@@ -180,7 +176,10 @@ export class WatchController {
   @ApiOperation({ summary: 'Get HLS segment (.ts file)' })
   @ApiParam({ name: 'videoId', type: Number })
   @ApiParam({ name: 'resolution', enum: ['1080p', '720p', '480p', '360p'] })
-  @ApiParam({ name: 'segmentName', description: 'Segment filename (e.g., segment_000.ts)' })
+  @ApiParam({
+    name: 'segmentName',
+    description: 'Segment filename (e.g., segment_000.ts)',
+  })
   @ApiQuery({
     name: 'token',
     required: false,

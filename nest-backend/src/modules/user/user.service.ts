@@ -35,7 +35,7 @@ export class UserService implements OnModuleInit {
     } catch (error) {
       // Redis might not be ready yet or authentication pending
       // The sync job will create the Bloom Filter and mark it ready
-      console.log(
+      this.logger.warn(
         '⚠️ Bloom Filter check skipped on startup (Redis may not be ready). Will be initialized by sync job.',
       );
     }

@@ -1,39 +1,45 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Navbar } from '@/components/navbar'
+import { VideoGrid } from '@/components/features/videos/video-grid'
+import { Button } from '@/components/ui/button'
+import { LoadingScreen } from '@/components/ui/loading-spinner'
 import { videoAPI } from '@/lib/api'
-
-interface Video {
-  id: number
-  title: string
-  description: string
-  status: string
-  user_name: string
-  created_at: string
-  thumbnail_url?: string | null
-}
+import { Video } from '@/lib/types'
+import { PAGINATION } from '@/lib/constants'
+import { cn } from '@/lib/utils/cn'
 
 export default function VideosPage() {
+  const searchParams = useSearchParams()
+  const searchQuery = searchParams.get('search') || ''
+
   const [videos, setVideos] = useState<Video[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
 
   const fetchVideos = async () => {
     try {
       setLoading(true)
       setError('')
       const response = searchQuery
-        ? await videoAPI.search(searchQuery, page, 10)
-        : await videoAPI.list(page, 10)
+        ? await videoAPI.search(searchQuery, page, PAGINATION.VIDEOS_PER_PAGE)
+        : await videoAPI.list(page, PAGINATION.VIDEOS_PER_PAGE)
 
       const data = response.data || response
-      setVideos(Array.isArray(data) ? data : data.items || [])
+      if (Array.isArray(data)) {
+        setVideos(data)
+        setTotal(data.length)
+      } else {
+        setVideos(data.items || [])
+        setTotal(data.total || 0)
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load videos')
+      setVideos([])
     } finally {
       setLoading(false)
     }
@@ -41,124 +47,90 @@ export default function VideosPage() {
 
   useEffect(() => {
     fetchVideos()
-  }, [page])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, searchQuery])
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    setPage(1)
-    fetchVideos()
-  }
-
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      ready: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300',
-      failed: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
-      pending: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300',
-      processing: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300',
-    }
-    return colors[status] || 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300'
-  }
+  const totalPages = Math.ceil(total / PAGINATION.VIDEOS_PER_PAGE)
+  const hasMore = page < totalPages
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-gray-950">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {searchQuery && (
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Search results for "{searchQuery}"
-            </h2>
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('')
-                setPage(1)
-                fetchVideos()
-              }}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Clear search
-            </button>
-          </div>
-        )}
-
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-red-700 dark:text-red-400">
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="text-center py-12 text-gray-600 dark:text-gray-400">Loading videos...</div>
-        ) : videos.length === 0 ? (
-          <div className="text-center py-12 text-gray-600 dark:text-gray-400">
-            No videos found. <Link href="/videos/upload" className="text-blue-600 dark:text-blue-400 hover:underline">Upload one?</Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {videos.map((video) => (
-              <Link
-                key={video.id}
-                href={`/videos/${video.id}`}
-                className="group bg-white dark:bg-gray-800 rounded-lg overflow-hidden hover:shadow-lg transition-all duration-200"
-              >
-                {/* Thumbnail Image */}
-                <div className="aspect-video w-full bg-gray-200 dark:bg-gray-700 relative overflow-hidden">
-                  {video.thumbnail_url ? (
-                    <img
-                      src={video.thumbnail_url}
-                      alt={video.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-700 dark:to-gray-800">
-                      <svg className="w-12 h-12 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                  )}
-                  {/* Status Badge Overlay */}
-                  <div className="absolute bottom-2 right-2">
-                    <span className={`px-2 py-1 rounded text-xs font-medium backdrop-blur-sm ${getStatusColor(video.status)}`}>
-                      {video.status}
-                    </span>
-                  </div>
-                </div>
-                {/* Video Info */}
-                <div className="p-3">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1 line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    {video.title}
-                  </h3>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">
-                    {video.description || 'No description'}
-                  </p>
-                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                    <span>{video.user_name || 'Unknown'}</span>
-                    <span>{new Date(video.created_at).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-8 flex justify-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 rounded-md transition-colors"
-          >
-            Previous
-          </button>
-          <span className="px-4 py-2 text-gray-700 dark:text-gray-300">Page {page}</span>
-          <button
-            onClick={() => setPage((p) => p + 1)}
-            disabled={videos.length < 10}
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 rounded-md transition-colors"
-          >
-            Next
-          </button>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-10 animate-in fade-in-0 slide-in-from-top-4 duration-500">
+          {searchQuery ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 dark:from-white dark:via-gray-100 dark:to-white bg-clip-text text-transparent mb-3">
+                  Search Results
+                </h1>
+                <p className="text-gray-600 dark:text-gray-400 text-lg">
+                  Found <span className="font-semibold text-blue-600 dark:text-blue-400">{total}</span> video{total !== 1 ? 's' : ''} for &quot;<span className="font-medium text-gray-900 dark:text-white">{searchQuery}</span>&quot;
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 dark:from-white dark:via-gray-100 dark:to-white bg-clip-text text-transparent mb-3">
+                Explore Videos
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 text-lg">
+                Discover amazing content from our community
+              </p>
+            </div>
+          )}
         </div>
+
+        {/* Error State */}
+        {error && (
+          <div className="mb-6 p-5 bg-red-50/80 dark:bg-red-900/20 border-l-4 border-red-500 dark:border-red-400 rounded-xl text-red-700 dark:text-red-400 shadow-lg backdrop-blur-sm animate-in slide-in-from-left-4 duration-300">
+            <div className="flex items-center space-x-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-medium">{error}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Video Grid */}
+        <div className="animate-in fade-in-0 duration-700">
+          <VideoGrid videos={videos} loading={loading} />
+        </div>
+
+        {/* Pagination */}
+        {!loading && videos.length > 0 && (
+          <div className="mt-12 flex items-center justify-center gap-4 animate-in fade-in-0 duration-500">
+            <Button
+              variant="outline"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-6 py-2.5 rounded-full shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50"
+            >
+              <svg className="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Previous
+            </Button>
+            <div className="flex items-center gap-2 px-6 py-2.5 bg-white dark:bg-gray-800 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Page <span className="text-blue-600 dark:text-blue-400">{page}</span> of <span className="text-blue-600 dark:text-blue-400">{totalPages || 1}</span>
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!hasMore}
+              className="px-6 py-2.5 rounded-full shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-50"
+            >
+              Next
+              <svg className="w-4 h-4 ml-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -6,13 +6,13 @@ import { Repository } from 'typeorm';
 import { GenericCrudRepository } from '../../../database/postgres/repository/generic-crud.repository';
 import { BullQueueService } from '../../../providers/bullmq/bullmq.service';
 import { GenericWorkerHost } from '../../../providers/bullmq/generic/genericWorkerHost';
-import { Videos } from '../entities/video.entity';
-import { UploadKakfaProducerService } from '../services/upload/upload-kafka-producer.service';
 import {
   TRANSCODE_WORKER_CONCURRENCY,
   VIDEO_TRANSCODE_DLQ,
   VIDEO_TRANSCODE_QUEUE,
 } from '../constants/video-processor.constants';
+import { Videos } from '../entities/video.entity';
+import { UploadKakfaProducerService } from '../services/upload/upload-kafka-producer.service';
 import { VideoProcessorService } from '../services/video-processor/video-processor.service';
 
 export interface IVideoTranscodeData {
@@ -104,4 +104,3 @@ export class VideoTranscodeProcessor extends GenericWorkerHost<
     });
   }
 }
-

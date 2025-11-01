@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { VideoProcessingStatus } from '../../../../common/enums/video-status.enum';
 import { VideoStatusLog } from '../../../../database/postgres/entities/video-status-log.entity';
+import { Videos } from '../../entities/video.entity';
+import { VideoStatusEventService } from './video-status-event.service';
 
 /**
  * Service for logging video status changes
@@ -14,6 +16,7 @@ export class VideoStatusLogService {
   constructor(
     @InjectRepository(VideoStatusLog)
     private readonly statusLogRepo: Repository<VideoStatusLog>,
+    private readonly statusEventService?: VideoStatusEventService,
   ) {}
 
   /**
@@ -34,12 +37,13 @@ export class VideoStatusLogService {
   ): Promise<VideoStatusLog | null> {
     try {
       // Check the most recent status log for this video
-      const latestLog = await this.statusLogRepo
-        .createQueryBuilder('log')
-        .where('log.video_id = :videoId', { videoId })
-        .orderBy('log.created_at', 'DESC')
-        .limit(1)
-        .getOne();
+      // Optimized: Use repository method instead of raw query builder
+      const latestLogs = await this.statusLogRepo.find({
+        where: { video_id: videoId } as any,
+        order: { created_at: 'DESC' } as any,
+        take: 1,
+      });
+      const latestLog = latestLogs.length > 0 ? latestLogs[0] : null;
 
       // Only log if:
       // 1. No previous status exists (first log), OR
@@ -58,13 +62,37 @@ export class VideoStatusLogService {
         status_message: statusMessage,
       });
 
+      let savedLog: VideoStatusLog;
       if (transactionManager) {
         // Use transaction manager if provided (for atomic operations)
-        return await transactionManager.save(VideoStatusLog, logEntry);
+        savedLog = await transactionManager.save(VideoStatusLog, logEntry);
       } else {
         // Use repository directly
-        return await this.statusLogRepo.save(logEntry);
+        savedLog = await this.statusLogRepo.save(logEntry);
       }
+
+      // Emit event for real-time SSE subscribers
+      if (this.statusEventService) {
+        try {
+          // Get current video status to include in update
+          const videoRepo = transactionManager?.getRepository(Videos) ||
+                          this.statusLogRepo.manager.getRepository(Videos);
+          const video = await videoRepo.findOne({
+            where: { id: videoId } as any,
+          });
+
+          this.statusEventService.emitFromStatusLog(
+            savedLog,
+            video?.status,
+            video?.processed_at,
+          );
+        } catch (err: any) {
+          // Don't fail if event emission fails
+          this.logger.warn(`Failed to emit status event: ${err.message}`);
+        }
+      }
+
+      return savedLog;
     } catch (error: any) {
       // Don't fail the main operation if logging fails
       this.logger.warn(

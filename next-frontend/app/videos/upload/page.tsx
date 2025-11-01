@@ -1,27 +1,17 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Navbar } from '@/components/navbar'
+import { Button, Input, Card, CardHeader, CardTitle, CardContent } from '@/components/ui'
+import { FileUploadArea } from '@/components/features/upload/file-upload-area'
+import { ProgressBar } from '@/components/features/upload/progress-bar'
+import { StatusTimeline } from '@/components/features/upload/status-timeline'
 import { uploadAPI, videoAPI } from '@/lib/api'
+import { formatFileSize } from '@/lib/utils/formatters'
+import { useVideoStatusStream } from '@/hooks/use-video-status-stream'
 
 const CHUNK_SIZE = 5 * 1024 * 1024 // 5MB chunks
-
-interface StatusUpdate {
-  video_id: number
-  status: string
-  actor?: string
-  status_message?: string | null
-  timestamp: string
-  processed_at?: string | null
-}
-
-interface StatusLogEntry {
-  status: string
-  actor: string
-  status_message: string | null
-  timestamp: string
-}
 
 export default function UploadPage() {
   const router = useRouter()
@@ -38,15 +28,10 @@ export default function UploadPage() {
   const [status, setStatus] = useState('')
   const [uploadComplete, setUploadComplete] = useState(false)
   const [videoId, setVideoId] = useState<number | null>(null)
-  const [statusTimeline, setStatusTimeline] = useState<StatusLogEntry[]>([])
-  const [currentVideoStatus, setCurrentVideoStatus] = useState<string>('')
-  const eventSourceRef = useRef<EventSource | null>(null)
+  const [uploadKey, setUploadKey] = useState<string | null>(null)
+  const [uploadId, setUploadId] = useState<string | null>(null)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0])
-    }
-  }
 
   const handleThumbnailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -84,105 +69,31 @@ export default function UploadPage() {
     return response.headers.get('ETag') || ''
   }
 
-  // Connect to SSE stream for video status
-  const connectStatusStream = (vidId: number) => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-    }
-
-    const token = localStorage.getItem('token')
-    const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/videos/status/${vidId}/stream?token=${encodeURIComponent(token || '')}`
-
-    const eventSource = new EventSource(url)
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data: StatusUpdate = JSON.parse(event.data)
-        setCurrentVideoStatus(data.status)
-
-        // Add to timeline if it's a status log entry
-        if (data.actor) {
-          setStatusTimeline((prev) => {
-            const exists = prev.some(
-              (entry) => entry.timestamp === data.timestamp && entry.status === data.status
-            )
-            if (!exists) {
-              return [
-                ...prev,
-                {
-                  status: data.status,
-                  actor: data.actor || 'system',
-                  status_message: data.status_message || null,
-                  timestamp: data.timestamp,
-                },
-              ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-            }
-            return prev
-          })
-        }
-
-        // Close connection if terminal state
-        if (data.status === 'ready' || data.status === 'failed') {
-          eventSource.close()
-          eventSourceRef.current = null
-          if (data.status === 'ready') {
-            setTimeout(() => {
-              router.push('/videos')
-            }, 2000)
-          }
-        }
-      } catch (err) {
-        console.error('Failed to parse SSE data:', err)
+  // Use the improved SSE hook for video status streaming
+  const {
+    status: currentVideoStatus,
+    timeline: statusTimeline,
+    error: streamError,
+  } = useVideoStatusStream({
+    videoId,
+    enabled: uploadComplete && videoId !== null,
+    onStatusUpdate: (update) => {
+      // Additional handling if needed
+      console.debug('Status update received:', update)
+    },
+    onClose: (finalStatus) => {
+      console.log('Stream closed with status:', finalStatus)
+      if (finalStatus === 'ready') {
+        setTimeout(() => {
+          router.push('/videos')
+        }, 2000)
       }
-    }
+    },
+    onError: (error) => {
+      console.error('SSE stream error:', error)
+    },
+  })
 
-    eventSource.onerror = (err) => {
-      console.error('SSE connection error:', err)
-      // Close on error
-      eventSource.close()
-      eventSourceRef.current = null
-    }
-
-    eventSourceRef.current = eventSource
-  }
-
-  useEffect(() => {
-    // Cleanup on unmount
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
-        eventSourceRef.current = null
-      }
-    }
-  }, [])
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      pending: 'Pending',
-      uploading: 'Uploading',
-      transcoding: 'Transcoding',
-      transcribing: 'Transcribing',
-      summarizing: 'Summarizing',
-      indexing: 'Indexing',
-      ready: 'Ready',
-      failed: 'Failed',
-    }
-    return labels[status] || status
-  }
-
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-      uploading: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-      transcoding: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
-      transcribing: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
-      summarizing: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300',
-      indexing: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-      ready: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300',
-      failed: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
-    }
-    return colors[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -191,8 +102,6 @@ export default function UploadPage() {
     setStatus('')
     setUploadComplete(false)
     setVideoId(null)
-    setStatusTimeline([])
-    setCurrentVideoStatus('')
 
     if (!file) {
       setError('Please select a video file')
@@ -217,6 +126,10 @@ export default function UploadPage() {
       if (!upload_id || !key) {
         throw new Error('Failed to initialize upload. Response: ' + JSON.stringify(initResponse))
       }
+
+      // Store upload details for cancellation
+      setUploadId(upload_id)
+      setUploadKey(key)
 
       // Step 2: Split file into chunks and upload parts
       const chunks = Math.ceil(file.size / CHUNK_SIZE)
@@ -302,9 +215,7 @@ export default function UploadPage() {
         setVideoId(vidId)
         setUploadComplete(true)
         setLoading(false)
-
-        // Connect to SSE stream for status updates
-        connectStatusStream(vidId)
+        // The SSE stream will automatically connect via the hook when videoId is set
       } else {
         throw new Error('Failed to get video ID from save response')
       }
@@ -315,40 +226,88 @@ export default function UploadPage() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
-      <Navbar />
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">Upload Video</h1>
+  const handleCancelUpload = async () => {
+    if (!uploadId || !uploadKey || !videoId) {
+      // Just reset state if no upload to abort
+      setLoading(false)
+      setUploadComplete(false)
+      setVideoId(null)
+      setUploadId(null)
+      setUploadKey(null)
+      return
+    }
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-red-700 dark:text-red-400">
-            {error}
-          </div>
+    try {
+      // If video exists in DB, delete it (handles both in-progress and existing)
+      if (videoId) {
+        await videoAPI.delete(videoId)
+      } else if (uploadId && uploadKey) {
+        // If only upload metadata exists, abort multipart upload
+        await uploadAPI.abort({ upload_id: uploadId, key: uploadKey })
+      }
+
+      // Reset state
+      setLoading(false)
+      setUploadComplete(false)
+      setVideoId(null)
+      setUploadId(null)
+      setUploadKey(null)
+      setProgress(0)
+      setStatus('')
+      setShowCancelConfirm(false)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to cancel upload')
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-950">
+      <Navbar />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            Upload Video
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Share your content with the world
+          </p>
+        </div>
+
+        {(error || streamError) && (
+          <Card className="mb-6 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-3">
+                <svg className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-red-700 dark:text-red-400 text-sm">{error || streamError}</p>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
           {/* Upload Form */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6 space-y-6">
-            <form onSubmit={handleSubmit}>
-              <div className="space-y-6">
-                <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Title
-                  </label>
-                  <input
-                    id="title"
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    required
-                    disabled={uploadComplete}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                  />
-                </div>
+          <Card className="lg:col-span-1">
+            <CardHeader>
+              <CardTitle>Video Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <Input
+                  label="Title"
+                  id="title"
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                  disabled={uploadComplete}
+                  placeholder="Enter video title"
+                />
 
                 <div>
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                     Description
                   </label>
                   <textarea
@@ -358,159 +317,214 @@ export default function UploadPage() {
                     required
                     rows={4}
                     disabled={uploadComplete}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    className="w-full px-4 py-2.5 border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 disabled:opacity-50 resize-none"
+                    placeholder="Describe your video..."
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="file" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Video File
                   </label>
-                  <input
-                    id="file"
-                    type="file"
+                  <FileUploadArea
+                    onFileSelect={(file) => setFile(file)}
                     accept="video/*"
-                    onChange={handleFileChange}
-                    required
                     disabled={uploadComplete}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    selectedFile={file}
+                    label="Drop video file here or click to browse"
                   />
-                  {file && (
-                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                      Selected: {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                    </p>
-                  )}
                 </div>
 
                 <div>
-                  <label htmlFor="thumbnail" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Custom Thumbnail (Optional)
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Custom Thumbnail <span className="text-gray-500 dark:text-gray-400 font-normal">(Optional)</span>
                   </label>
                   {thumbnailPreview ? (
-                    <div className="relative">
+                    <div className="relative group">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={thumbnailPreview}
                         alt="Thumbnail preview"
-                        className="w-full aspect-video object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                        className="w-full aspect-video object-cover rounded-xl border-2 border-gray-200 dark:border-gray-700 shadow-md transition-transform duration-200 group-hover:scale-[1.02]"
                       />
                       <button
                         type="button"
                         onClick={removeThumbnail}
                         disabled={uploadComplete}
-                        className="absolute top-2 right-2 px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded-md transition-colors disabled:opacity-50"
+                        className="absolute top-3 right-3 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 flex items-center space-x-1"
                       >
-                        Remove
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        <span>Remove</span>
                       </button>
                     </div>
                   ) : (
                     <div className="relative">
-                      <input
-                        id="thumbnail"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleThumbnailChange}
-                        disabled={uploadComplete}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                      />
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Recommended: 1280×720 (16:9 aspect ratio)
-                      </p>
+                      <label
+                        htmlFor="thumbnail"
+                        className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl cursor-pointer hover:border-blue-400 dark:hover:border-gray-500 transition-colors bg-gray-50 dark:bg-gray-800/50"
+                      >
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          <svg className="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+                            <span className="font-semibold">Click to upload</span> or drag and drop
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            PNG, JPG up to 10MB (1280×720 recommended)
+                          </p>
+                        </div>
+                        <input
+                          id="thumbnail"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleThumbnailChange}
+                          disabled={uploadComplete}
+                          className="hidden"
+                        />
+                      </label>
                     </div>
                   )}
                 </div>
 
                 {status && !uploadComplete && (
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
-                    <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">{status}</p>
-                    {progress > 0 && (
-                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full transition-all"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    )}
-                  </div>
+                  <ProgressBar progress={progress} status={status} />
                 )}
 
                 {!uploadComplete && (
-                  <button
+                  <Button
                     type="submit"
-                    disabled={loading}
-                    className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-md transition-colors"
+                    disabled={loading || !file}
+                    isLoading={loading}
+                    className="w-full"
+                    size="lg"
                   >
                     {loading ? 'Uploading...' : 'Upload Video'}
-                  </button>
+                  </Button>
                 )}
-              </div>
-            </form>
-          </div>
+              </form>
+            </CardContent>
+          </Card>
 
           {/* Status Timeline */}
           {uploadComplete && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                Processing Status
-              </h2>
-              {currentVideoStatus && (
-                <div className="mb-4">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(currentVideoStatus)}`}>
-                    {getStatusLabel(currentVideoStatus)}
-                  </span>
-                </div>
-              )}
-              <div className="space-y-4">
-                {statusTimeline.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Waiting for status updates...</p>
-                ) : (
-                  <div className="relative">
-                    {/* Timeline line */}
-                    <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
-                    {/* Timeline items */}
-                    <div className="space-y-4">
-                      {statusTimeline.map((entry, index) => (
-                        <div key={index} className="relative flex items-start space-x-4">
-                          <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center ${getStatusColor(entry.status)}`}>
-                            <div className="w-3 h-3 rounded-full bg-current"></div>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                {getStatusLabel(entry.status)}
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {new Date(entry.timestamp).toLocaleTimeString()}
-                              </p>
-                            </div>
-                            {entry.status_message && (
-                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                {entry.status_message}
-                              </p>
-                            )}
-                            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                              by {entry.actor}
-                            </p>
-                          </div>
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span>Processing Status</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <StatusTimeline entries={statusTimeline} currentStatus={currentVideoStatus} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Upload Progress Sidebar (when uploading) */}
+          {loading && !uploadComplete && (
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle>Upload Progress</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {file && (
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
                         </div>
-                      ))}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            {file.name}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {formatFileSize(file.size)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            </div>
+                  )}
+                  <ProgressBar progress={progress} status={status} />
+                  <Button
+                    variant="danger"
+                    onClick={() => setShowCancelConfirm(true)}
+                    className="w-full mt-4"
+                    disabled={uploadComplete}
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Cancel Upload
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
 
-        {/* View Processing Videos Link */}
-        <div className="mt-6">
-          <button
+        {/* Footer Actions */}
+        <div className="mt-8 flex items-center justify-between">
+          <Button
+            variant="ghost"
             onClick={() => router.push('/videos/processing')}
-            className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
+            className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
           >
-            View my in-progress and failed uploads →
-          </button>
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            View Processing Videos
+          </Button>
+
+          {uploadComplete && (
+            <Button
+              variant="primary"
+              onClick={() => router.push(`/videos/${videoId}`)}
+            >
+              View Video
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Cancel Confirmation Dialog */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="max-w-md w-full mx-4">
+            <CardHeader>
+              <CardTitle>Cancel Upload?</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Are you sure you want to cancel this upload? All progress will be lost and any uploaded data will be deleted.
+              </p>
+              <div className="flex space-x-3">
+                <Button
+                  variant="danger"
+                  onClick={handleCancelUpload}
+                  className="flex-1"
+                >
+                  Yes, Cancel Upload
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="flex-1"
+                >
+                  No, Continue
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

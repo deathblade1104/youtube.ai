@@ -6,8 +6,9 @@ import { ThemeProvider } from '@/components/theme-provider'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'YouTube AI',
+  title: 'youtube.ai',
   description: 'AI-powered video platform',
+  icons: { icon: '/favicon.ico' },
 }
 
 export default function RootLayout({

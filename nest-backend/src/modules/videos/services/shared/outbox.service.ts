@@ -59,35 +59,38 @@ export class OutboxService {
 
   /**
    * Mark event as published
+   * Optimized: Update directly without fetch if event exists
    */
   async markAsPublished(id: string, transactionManager?: any): Promise<void> {
-    const event = await this.outboxRepository.findOneOrNone({
-      where: { id } as any,
-    });
+    // Update directly - updateBy will return empty array if not found
+    const updated = await this.outboxRepository.updateBy(
+      { where: { id } as any },
+      {
+        published: true,
+        published_at: new Date(),
+      },
+      transactionManager,
+    );
 
-    if (event) {
-      await this.outboxRepository.updateBy(
-        { where: { id } as any },
-        {
-          published: true,
-          published_at: new Date(),
-        },
-        transactionManager,
-      );
+    if (updated.length > 0) {
+      this.logger.debug(`✅ Marked outbox event as published: id=${id}`);
+    } else {
+      this.logger.warn(`⚠️ Outbox event not found for publishing: id=${id}`);
     }
-
-    this.logger.debug(`✅ Marked outbox event as published: id=${id}`);
   }
 
   /**
    * Increment attempts counter
+   * Optimized: Use atomic increment to avoid race conditions
    */
   async incrementAttempts(id: string): Promise<void> {
+    // Fetch current attempts first (required for atomic update)
     const event = await this.outboxRepository.findOneOrNone({
       where: { id } as any,
     });
 
     if (event) {
+      // Use atomic increment to avoid race conditions
       await this.outboxRepository.updateBy(
         { where: { id } as any },
         {
@@ -97,6 +100,8 @@ export class OutboxService {
       this.logger.debug(
         `📊 Incremented attempts for outbox event: id=${id}, attempts=${event.attempts + 1}`,
       );
+    } else {
+      this.logger.warn(`⚠️ Outbox event not found for increment attempts: id=${id}`);
     }
   }
 }

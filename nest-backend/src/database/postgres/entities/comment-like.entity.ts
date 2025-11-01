@@ -1,6 +1,6 @@
 import { Column, Entity, Index, ManyToOne, JoinColumn, Unique } from 'typeorm';
 import { TableNames } from '../../../common/enums/entities.enums';
-import { AbstractEntity } from './abstract.entity';
+import { AbstractEntity } from '../abstract.entity';
 import { Comment } from './comment.entity';
 import { User } from '../../../modules/user/entities/user.entity';
 

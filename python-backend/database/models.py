@@ -17,7 +17,7 @@ from sqlalchemy.sql import func
 import uuid
 from typing import Optional
 
-from database.base import BaseEntity
+from database.base import Base, BaseEntity
 
 
 class Videos(BaseEntity):
@@ -126,5 +126,32 @@ class OutboxEvent(BaseEntity):
         nullable=False,
     )
     published_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Indexes are created by NestJS TypeORM, not Python backend
+
+
+class ProcessedMessage(Base):
+    """Processed message model for idempotency tracking (shared with nest-be).
+
+    Tracks Kafka events that have already been processed to prevent duplicate processing.
+
+    Note: Indexes are created by NestJS TypeORM synchronize, not here.
+    """
+
+    __tablename__ = "processed_messages"
+
+    # Override id from BaseEntity to use UUID (event ID from outbox)
+    id = Column(UUID(as_uuid=True), primary_key=True, nullable=False)
+    topic = Column(Text, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    processed_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
 
     # Indexes are created by NestJS TypeORM, not Python backend

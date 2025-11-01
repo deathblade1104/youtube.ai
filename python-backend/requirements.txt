@@ -18,8 +18,10 @@ celery==5.3.6
 redis==5.0.1
 
 # OpenAI (use compatible version)
+# Note: httpx 0.28+ removed 'proxies' arg that OpenAI 1.12 uses
+# Using 0.27.2 for compatibility, or upgrade OpenAI to 1.55.3+
 openai>=1.12.0,<2.0.0
-httpx>=0.27.0,<1.0.0
+httpx>=0.27.0,<0.28.0
 
 # OpenAI Whisper for transcription
 openai-whisper>=20231117

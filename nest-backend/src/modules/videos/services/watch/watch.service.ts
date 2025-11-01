@@ -156,7 +156,10 @@ export class WatchService {
 
     // Check content type to ensure we got a playlist, not binary data
     const contentType = response.ContentType;
-    if (!contentType || !contentType.includes('mpegurl') && !contentType.includes('text')) {
+    if (
+      !contentType ||
+      (!contentType.includes('mpegurl') && !contentType.includes('text'))
+    ) {
       this.logger.warn(
         `Unexpected content type for variant ${resolution} playlist: ${contentType}. Key: ${variant.key}`,
       );
@@ -228,9 +231,7 @@ export class WatchService {
   /**
    * Get the best quality variant for a video
    */
-  async getBestQualityVariant(
-    videoId: number,
-  ): Promise<VideoVariant | null> {
+  async getBestQualityVariant(videoId: number): Promise<VideoVariant | null> {
     // Get all variants sorted by resolution (highest first)
     const variants = await this.videoVariantRepository.findAll({
       where: { video_id: videoId } as any,
@@ -296,4 +297,3 @@ export class WatchService {
     return resolutions[resolution] || '640x360';
   }
 }
-

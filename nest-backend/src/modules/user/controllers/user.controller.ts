@@ -86,6 +86,28 @@ export class UsersController {
     };
   }
 
+  @Get('me')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Get current user information (alias for /users/info)',
+    description:
+      "Retrieve the authenticated user's profile information. This is an alias for /users/info.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User information retrieved successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token',
+  })
+  async getMe(@Req() req: CustomExpressRequest) {
+    // Alias for getUserInfo - reuse the same logic
+    return this.getUserInfo(req);
+  }
+
   @Public()
   @Post('check-email')
   @HttpCode(200)

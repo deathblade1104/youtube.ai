@@ -1,25 +1,24 @@
 import {
+  BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
-  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
-import { GenericCrudRepository } from '../../../../database/postgres/repository/generic-crud.repository';
-import { Comment } from '../../../../database/postgres/entities/comment.entity';
-import { CommentLike } from '../../../../database/postgres/entities/comment-like.entity';
-import { Videos } from '../../entities/video.entity';
-import { CreateCommentDto, UpdateCommentDto } from '../../dtos/comment.dto';
+import { DataSource, In, Repository } from 'typeorm';
 import { PaginationQueryDto } from '../../../../common/dtos/pagination.dto';
+import { CommentLike } from '../../../../database/postgres/entities/comment-like.entity';
+import { Comment } from '../../../../database/postgres/entities/comment.entity';
+import { GenericCrudRepository } from '../../../../database/postgres/repository/generic-crud.repository';
+import { CreateCommentDto, UpdateCommentDto } from '../../dtos/comment.dto';
+import { Videos } from '../../entities/video.entity';
 
 @Injectable()
 export class CommentService {
   private readonly logger = new Logger(CommentService.name);
   private readonly commentRepository: GenericCrudRepository<Comment>;
   private readonly videoRepository: GenericCrudRepository<Videos>;
-  private readonly commentLikeRepository: GenericCrudRepository<CommentLike>;
 
   constructor(
     @InjectRepository(Comment)
@@ -30,9 +29,11 @@ export class CommentService {
     private readonly commentLikeRepo: Repository<CommentLike>,
     private readonly dataSource: DataSource,
   ) {
-    this.commentRepository = new GenericCrudRepository(commentRepo, Comment.name);
+    this.commentRepository = new GenericCrudRepository(
+      commentRepo,
+      Comment.name,
+    );
     this.videoRepository = new GenericCrudRepository(videoRepo, Videos.name);
-    this.commentLikeRepository = new GenericCrudRepository(commentLikeRepo, CommentLike.name);
   }
 
   /**
@@ -67,17 +68,27 @@ export class CommentService {
       order: { created_at: 'DESC' } as any,
     });
 
-    // Get all comment IDs for like checking (including replies)
-    const allReplies = await Promise.all(
-      result.items.map((comment) =>
-        this.commentRepository.findAll({
-          where: { parent_id: comment.id } as any,
-        }),
-      ),
-    );
+    // Optimize: Fetch all replies in one query instead of N+1 queries
+    const topLevelCommentIds = result.items.map((c) => c.id);
+    const allReplies = await this.commentRepository.findAll({
+      where: { parent_id: In(topLevelCommentIds) } as any,
+      relations: ['user'], // Eager load user relation for replies
+      order: { created_at: 'ASC' } as any,
+    });
+
+    // Group replies by parent_id for efficient lookup
+    const repliesByParent = new Map<number, typeof allReplies>();
+    for (const reply of allReplies) {
+      const parentId = reply.parent_id;
+      if (!repliesByParent.has(parentId)) {
+        repliesByParent.set(parentId, []);
+      }
+      repliesByParent.get(parentId)!.push(reply);
+    }
+
     const commentIds = [
       ...result.items.map((c) => c.id),
-      ...allReplies.flat().map((c) => c.id),
+      ...allReplies.map((c) => c.id),
     ];
 
     // Check which comments the user has liked (if userId provided)
@@ -93,27 +104,21 @@ export class CommentService {
       userLikedCommentIds = new Set(likes.map((like) => like.comment_id));
     }
 
-    // For each top-level comment, fetch its replies with user relation
-    const commentsWithReplies = await Promise.all(
-      result.items.map(async (comment) => {
-        const replies = await this.commentRepository.findAll({
-          where: { parent_id: comment.id } as any,
-          relations: ['user'], // Eager load user relation for replies
-          order: { created_at: 'ASC' } as any,
-        });
+    // Map comments with their replies (already fetched, no additional queries)
+    const commentsWithReplies = result.items.map((comment) => {
+      const replies = repliesByParent.get(comment.id) || [];
 
-        return {
-          ...comment,
-          user_name: comment.user?.name || null,
-          replies: replies.map((reply) => ({
-            ...reply,
-            user_name: reply.user?.name || null,
-            has_liked: userLikedCommentIds.has(reply.id),
-          })),
-          has_liked: userLikedCommentIds.has(comment.id),
-        };
-      }),
-    );
+      return {
+        ...comment,
+        user_name: comment.user?.name || null,
+        replies: replies.map((reply) => ({
+          ...reply,
+          user_name: reply.user?.name || null,
+          has_liked: userLikedCommentIds.has(reply.id),
+        })),
+        has_liked: userLikedCommentIds.has(comment.id),
+      };
+    });
 
     return {
       message: 'Comments retrieved successfully',
@@ -129,11 +134,7 @@ export class CommentService {
   /**
    * Create a comment or reply
    */
-  async createComment(
-    videoId: number,
-    userId: number,
-    dto: CreateCommentDto,
-  ) {
+  async createComment(videoId: number, userId: number, dto: CreateCommentDto) {
     // Verify video exists
     const video = await this.videoRepository.findOneOrNone({
       where: { id: videoId } as any,
@@ -150,7 +151,9 @@ export class CommentService {
       });
 
       if (!parentComment) {
-        throw new NotFoundException(`Parent comment ${dto.parent_id} not found`);
+        throw new NotFoundException(
+          `Parent comment ${dto.parent_id} not found`,
+        );
       }
 
       if (parentComment.video_id !== videoId) {
@@ -190,7 +193,9 @@ export class CommentService {
         };
 
     return {
-      message: dto.parent_id ? 'Reply created successfully' : 'Comment created successfully',
+      message: dto.parent_id
+        ? 'Reply created successfully'
+        : 'Comment created successfully',
       data: mappedComment,
     };
   }
@@ -246,11 +251,7 @@ export class CommentService {
    * Uses database transaction to handle race conditions
    * Unique constraint on (user_id, comment_id) prevents duplicate likes
    */
-  async toggleLikeComment(
-    videoId: number,
-    commentId: number,
-    userId: number,
-  ) {
+  async toggleLikeComment(videoId: number, commentId: number, userId: number) {
     // Verify comment exists and belongs to video
     const comment = await this.commentRepository.findOneOrNone({
       where: { id: commentId } as any,
@@ -265,92 +266,108 @@ export class CommentService {
     }
 
     // Use transaction to handle race conditions atomically
-    return await this.dataSource.transaction(async (transactionalEntityManager) => {
-      // Check if user has already liked this comment
-      const existingLike = await transactionalEntityManager.findOne(CommentLike, {
-        where: { user_id: userId, comment_id: commentId } as any,
-      });
+    return await this.dataSource.transaction(
+      async (transactionalEntityManager) => {
+        // Check if user has already liked this comment
+        const existingLike = await transactionalEntityManager.findOne(
+          CommentLike,
+          {
+            where: { user_id: userId, comment_id: commentId } as any,
+          },
+        );
 
-      let newLikesCount: number;
-      let hasLiked: boolean;
+        let newLikesCount: number;
+        let hasLiked: boolean;
 
-      if (existingLike) {
-        // User already liked - unlike (remove like)
-        await transactionalEntityManager.delete(CommentLike, {
-          user_id: userId,
-          comment_id: commentId,
-        });
-
-        // Atomic decrement using raw query to avoid race conditions
-        await transactionalEntityManager
-          .createQueryBuilder()
-          .update(Comment)
-          .set({ likes: () => 'likes - 1' })
-          .where('id = :commentId', { commentId })
-          .andWhere('likes > 0') // Prevent negative likes
-          .execute();
-
-        // Fetch updated count
-        const updatedComment = await transactionalEntityManager.findOne(Comment, {
-          where: { id: commentId } as any,
-        });
-        newLikesCount = updatedComment?.likes ?? comment.likes - 1;
-        hasLiked = false;
-
-        this.logger.log(`User ${userId} unliked comment ${commentId}`);
-      } else {
-        // User hasn't liked - add like
-        // Unique constraint will prevent duplicates even in race conditions
-        try {
-          await transactionalEntityManager.save(CommentLike, {
+        if (existingLike) {
+          // User already liked - unlike (remove like)
+          await transactionalEntityManager.delete(CommentLike, {
             user_id: userId,
             comment_id: commentId,
           });
 
-          // Atomic increment using raw query to avoid race conditions
+          // Atomic decrement using raw query to avoid race conditions
           await transactionalEntityManager
             .createQueryBuilder()
             .update(Comment)
-            .set({ likes: () => 'likes + 1' })
+            .set({ likes: () => 'likes - 1' })
             .where('id = :commentId', { commentId })
+            .andWhere('likes > 0') // Prevent negative likes
             .execute();
 
           // Fetch updated count
-          const updatedComment = await transactionalEntityManager.findOne(Comment, {
-            where: { id: commentId } as any,
-          });
-          newLikesCount = updatedComment?.likes ?? comment.likes + 1;
-          hasLiked = true;
-
-          this.logger.log(`User ${userId} liked comment ${commentId}`);
-        } catch (error: any) {
-          // Handle unique constraint violation (race condition - another request already liked)
-          if (error.code === '23505') {
-            // PostgreSQL unique constraint violation
-            this.logger.warn(
-              `Race condition detected: User ${userId} tried to like comment ${commentId} but like already exists`,
-            );
-            // Return that user has liked it
-            const updatedComment = await transactionalEntityManager.findOne(Comment, {
+          const updatedComment = await transactionalEntityManager.findOne(
+            Comment,
+            {
               where: { id: commentId } as any,
+            },
+          );
+          newLikesCount = updatedComment?.likes ?? comment.likes - 1;
+          hasLiked = false;
+
+          this.logger.log(`User ${userId} unliked comment ${commentId}`);
+        } else {
+          // User hasn't liked - add like
+          // Unique constraint will prevent duplicates even in race conditions
+          try {
+            await transactionalEntityManager.save(CommentLike, {
+              user_id: userId,
+              comment_id: commentId,
             });
-            newLikesCount = updatedComment?.likes ?? comment.likes;
+
+            // Atomic increment using raw query to avoid race conditions
+            await transactionalEntityManager
+              .createQueryBuilder()
+              .update(Comment)
+              .set({ likes: () => 'likes + 1' })
+              .where('id = :commentId', { commentId })
+              .execute();
+
+            // Fetch updated count
+            const updatedComment = await transactionalEntityManager.findOne(
+              Comment,
+              {
+                where: { id: commentId } as any,
+              },
+            );
+            newLikesCount = updatedComment?.likes ?? comment.likes + 1;
             hasLiked = true;
-          } else {
-            throw error;
+
+            this.logger.log(`User ${userId} liked comment ${commentId}`);
+          } catch (error: any) {
+            // Handle unique constraint violation (race condition - another request already liked)
+            if (error.code === '23505') {
+              // PostgreSQL unique constraint violation
+              this.logger.warn(
+                `Race condition detected: User ${userId} tried to like comment ${commentId} but like already exists`,
+              );
+              // Return that user has liked it
+              const updatedComment = await transactionalEntityManager.findOne(
+                Comment,
+                {
+                  where: { id: commentId } as any,
+                },
+              );
+              newLikesCount = updatedComment?.likes ?? comment.likes;
+              hasLiked = true;
+            } else {
+              throw error;
+            }
           }
         }
-      }
 
-      return {
-        message: hasLiked ? 'Comment liked successfully' : 'Comment unliked successfully',
-        data: {
-          comment_id: commentId,
-          likes: newLikesCount,
-          has_liked: hasLiked,
-        },
-      };
-    });
+        return {
+          message: hasLiked
+            ? 'Comment liked successfully'
+            : 'Comment unliked successfully',
+          data: {
+            comment_id: commentId,
+            likes: newLikesCount,
+            has_liked: hasLiked,
+          },
+        };
+      },
+    );
   }
 
   /**
@@ -373,21 +390,36 @@ export class CommentService {
       throw new ForbiddenException('You can only delete your own comments');
     }
 
-    // Delete replies first if any
-    const replies = await this.commentRepository.findAll({
-      where: { parent_id: commentId } as any,
-    });
+    // Use transaction to ensure atomic deletion
+    return await this.dataSource.transaction(
+      async (transactionalEntityManager) => {
+        // Get all replies first
+        const replies = await this.commentRepository.findAll({
+          where: { parent_id: commentId } as any,
+        });
 
-    for (const reply of replies) {
-      await this.commentRepo.delete({ id: reply.id });
-    }
+        const replyIds = replies.map((reply) => reply.id);
+        const allCommentIds = [commentId, ...replyIds];
 
-    // Delete the comment
-    await this.commentRepo.delete({ id: commentId });
+        // Delete all comment_likes for the comment and its replies
+        if (allCommentIds.length > 0) {
+          await transactionalEntityManager.delete(CommentLike, {
+            comment_id: In(allCommentIds) as any,
+          });
+        }
 
-    return {
-      message: 'Comment deleted successfully',
-    };
+        // Delete replies first if any
+        for (const reply of replies) {
+          await transactionalEntityManager.delete(Comment, { id: reply.id });
+        }
+
+        // Delete the comment
+        await transactionalEntityManager.delete(Comment, { id: commentId });
+
+        return {
+          message: 'Comment deleted successfully',
+        };
+      },
+    );
   }
 }
-

@@ -4,13 +4,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { searchAPI } from '@/lib/api'
 import { useDebounce } from '@/hooks/use-debounce'
-import Link from 'next/link'
-
-interface AutocompleteSuggestion {
-  text: string
-  video_id: number
-  thumbnail_url: string | null
-}
+import { AutocompleteSuggestion } from '@/lib/types'
+import { MIN_SEARCH_LENGTH, DEBOUNCE_DELAY_SEARCH } from '@/lib/constants'
+import { cn } from '@/lib/utils/cn'
 
 export function SearchBar() {
   const router = useRouter()
@@ -19,11 +15,12 @@ export function SearchBar() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
-  const debouncedQuery = useDebounce(query, 300)
+  const debouncedQuery = useDebounce(query, DEBOUNCE_DELAY_SEARCH)
 
   // Fetch autocomplete suggestions
   useEffect(() => {
-    if (debouncedQuery.trim().length > 0) {
+    // Require at least 3 characters before searching
+    if (debouncedQuery.trim().length >= MIN_SEARCH_LENGTH) {
       setIsSearching(true)
       searchAPI
         .autocomplete(debouncedQuery, 8)
@@ -75,7 +72,14 @@ export function SearchBar() {
   return (
     <div ref={searchRef} className="relative flex-1 max-w-2xl mx-4">
       <form onSubmit={handleSubmit} className="relative">
-        <div className="relative flex items-center">
+        <div className="relative flex items-center shadow-lg shadow-blue-500/10 dark:shadow-blue-500/20 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 focus-within:ring-2 focus-within:ring-blue-500/50 focus-within:border-blue-500/50 transition-all duration-300">
+          {/* Search Icon */}
+          <div className="absolute left-4 text-gray-400 dark:text-gray-500 pointer-events-none">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+
           <input
             type="text"
             value={query}
@@ -86,39 +90,37 @@ export function SearchBar() {
               }
             }}
             placeholder="Search videos..."
-            className="w-full px-4 py-2 pl-10 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-l-full focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white"
+            className="w-full px-4 py-3 pl-11 pr-12 bg-transparent border-0 rounded-l-full focus:outline-none text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
           />
-          <div className="absolute left-3 pointer-events-none">
-            <svg
-              className="w-5 h-5 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="absolute right-24 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200 hover:scale-110 active:scale-95 rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-          </div>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+
           <button
             type="submit"
-            className="px-6 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-l-0 border-gray-300 dark:border-gray-600 rounded-r-full text-gray-700 dark:text-gray-300 transition-colors"
+            className={cn(
+              'px-6 py-3 ml-2 rounded-r-full',
+              'bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700',
+              'hover:from-blue-700 hover:via-blue-700 hover:to-blue-800',
+              'dark:from-blue-600 dark:via-blue-600 dark:to-blue-700',
+              'dark:hover:from-blue-700 dark:hover:via-blue-700 dark:hover:to-blue-800',
+              'text-white font-semibold transition-all duration-200',
+              'shadow-md hover:shadow-lg hover:shadow-blue-500/30',
+              'active:scale-[0.97] transform'
+            )}
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
+            <span className="hidden sm:inline">Search</span>
+            <svg className="sm:hidden w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </button>
         </div>
@@ -126,35 +128,43 @@ export function SearchBar() {
 
       {/* Autocomplete Suggestions Dropdown */}
       {showSuggestions && (query.trim().length > 0 || suggestions.length > 0) && (
-        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-3 bg-white/95 dark:bg-gray-800/95 border border-gray-200/50 dark:border-gray-700/50 rounded-2xl shadow-2xl shadow-black/10 dark:shadow-black/50 max-h-96 overflow-y-auto backdrop-blur-xl animate-in fade-in-0 zoom-in-95 duration-200">
           {isSearching && suggestions.length === 0 && (
-            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-              Searching...
+            <div className="p-6 text-center">
+              <div className="inline-flex items-center space-x-2 text-gray-500 dark:text-gray-400">
+                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <span>Searching...</span>
+              </div>
             </div>
           )}
           {!isSearching && suggestions.length === 0 && query.trim().length > 0 && (
-            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-              No suggestions found
+            <div className="p-6 text-center text-gray-500 dark:text-gray-400">
+              <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <p className="text-sm">No suggestions found</p>
             </div>
           )}
           {suggestions.length > 0 && (
             <ul className="py-2">
               {suggestions.map((suggestion, idx) => (
                 <li
-                  key={idx}
+                  key={`${suggestion.video_id}-${idx}`}
                   onClick={() => handleSuggestionClick(suggestion.video_id)}
-                  className="px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center space-x-3 transition-colors"
+                  className="px-4 py-3 mx-2 my-1 hover:bg-blue-50 dark:hover:bg-gray-700/50 cursor-pointer flex items-center space-x-3 transition-all duration-200 group rounded-xl active:scale-[0.98]"
                 >
                   {suggestion.thumbnail_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={suggestion.thumbnail_url}
                       alt={suggestion.text}
-                      className="w-16 h-9 object-cover rounded flex-shrink-0"
+                      className="w-20 h-11 object-cover rounded-lg flex-shrink-0 transition-transform duration-200 group-hover:scale-105 shadow-md"
+                      loading="lazy"
                     />
                   ) : (
-                    <div className="w-16 h-9 bg-gray-200 dark:bg-gray-700 rounded flex-shrink-0 flex items-center justify-center">
+                    <div className="w-20 h-11 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 rounded-lg flex-shrink-0 flex items-center justify-center shadow-md">
                       <svg
-                        className="w-4 h-4 text-gray-400"
+                        className="w-5 h-5 text-gray-400"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -168,9 +178,12 @@ export function SearchBar() {
                       </svg>
                     </div>
                   )}
-                  <span className="text-sm text-gray-900 dark:text-white line-clamp-1 flex-1">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white line-clamp-1 flex-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                     {suggestion.text}
                   </span>
+                  <svg className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
                 </li>
               ))}
             </ul>

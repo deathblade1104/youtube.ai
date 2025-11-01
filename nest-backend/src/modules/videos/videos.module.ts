@@ -43,8 +43,10 @@ import { VideoTranscodeProcessor } from './processors/video-transcode.processor'
 import { OutboxPublisherScheduler } from './schedulers/outbox-publisher.scheduler';
 import { SearchKafkaConsumerController } from './services/search/search-kafka-consumer.service';
 import { VideoSearchIndexService } from './services/search/video-search-index.service';
+import { VideoSearchInitService } from './services/search/video-search-init.service';
 import { VideoSearchService } from './services/search/video-search.service';
 import { OutboxService } from './services/shared/outbox.service';
+import { VideoStatusEventService } from './services/shared/video-status-event.service';
 import { VideoStatusLogService } from './services/shared/video-status-log.service';
 import { UploadKakfaProducerService } from './services/upload/upload-kafka-producer.service';
 import { UploadService } from './services/upload/upload.service';
@@ -54,6 +56,7 @@ import { VideoProcessorKafkaConsumerController } from './services/video-processo
 import { VideoProcessorService } from './services/video-processor/video-processor.service';
 import { VideoWatchService } from './services/video-watch.service';
 import { WatchService } from './services/watch/watch.service';
+import { VideoDeletionService } from './services/video-deletion.service';
 
 @Module({
   imports: [
@@ -123,9 +126,13 @@ import { WatchService } from './services/watch/watch.service';
     // Search services
     VideoSearchService,
     VideoSearchIndexService,
+    VideoSearchInitService,
     // Shared services
     OutboxService,
     VideoStatusLogService,
+    VideoStatusEventService,
+    // Video deletion service
+    VideoDeletionService,
     // Processors
     VideoTranscodeProcessor,
     VideoIndexProcessor,

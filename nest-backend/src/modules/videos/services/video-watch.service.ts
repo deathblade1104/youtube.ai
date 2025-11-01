@@ -58,6 +58,7 @@ export class VideoWatchService {
       message: 'Video watch data retrieved successfully',
       data: {
         video: videoInfo,
+        uploader: (videoInfo as any).uploader, // Include uploader info from videoInfo
         summary: summary
           ? {
               summary_text: summary.summary_text,

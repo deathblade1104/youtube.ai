@@ -40,8 +40,8 @@ export class VideoSearchService {
           ? Direction.NEXT
           : Direction.PREV;
 
-      // Build search query with fuzzy matching
-      const searchQuery = this.opensearchService.queryBuilder({
+      // Build search query with fuzzy matching and deleted video filter
+      const baseQuery = this.opensearchService.queryBuilder({
         multiMatch: [
           {
             query,
@@ -57,6 +57,38 @@ export class VideoSearchService {
           },
         ],
       });
+
+      // Add filter to exclude deleted videos
+      const searchQuery = {
+        bool: {
+          must: [baseQuery],
+          filter: [
+            // Exclude deleted videos
+            {
+              bool: {
+                must_not: [
+                  {
+                    exists: {
+                      field: 'deleted_at',
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              bool: {
+                must_not: [
+                  {
+                    term: {
+                      status: 'deleted',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      };
 
       const result = await this.opensearchService.fetchDocs<
         IVideoSearchDocument & { _id: string }
@@ -109,17 +141,63 @@ export class VideoSearchService {
     }>
   > {
     try {
-      // Build autocomplete query with prefix matching
-      const searchQuery = this.opensearchService.queryBuilder({
-        multiMatch: [
-          {
-            query,
-            fields: ['title^3', 'description^2'],
-            type: OPENSEARCH_QUERY_TYPES.bestFields,
-            fuzziness: 'AUTO',
-          },
-        ],
-      });
+      // Build autocomplete query with multi-match and prefix support
+      // Using bool query to combine multi-match with filters
+      const searchQuery = {
+        bool: {
+          must: [
+            {
+              bool: {
+                should: [
+                  // Multi-match for fuzzy matching
+                  {
+                    multi_match: {
+                      query,
+                      fields: ['title^3', 'description^2'],
+                      type: OPENSEARCH_QUERY_TYPES.bestFields,
+                      fuzziness: 'AUTO',
+                    },
+                  },
+                  // Prefix match for autocomplete (matches "nikh" to "Nikhar")
+                  {
+                    multi_match: {
+                      query,
+                      fields: ['title^3', 'description^2'],
+                      type: 'phrase_prefix',
+                    },
+                  },
+                ],
+                minimum_should_match: 1,
+              },
+            },
+          ],
+          filter: [
+            // Exclude deleted videos
+            {
+              bool: {
+                must_not: [
+                  {
+                    exists: {
+                      field: 'deleted_at',
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              bool: {
+                must_not: [
+                  {
+                    term: {
+                      status: 'deleted',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      };
 
       const result = await this.opensearchService.fetchDocs<
         IVideoSearchDocument & { _id: string }

@@ -324,12 +324,18 @@ export class FfmpegService {
         .format('hls') // HLS format
         .outputOptions([
           '-preset fast',
-          '-hls_time', segmentDuration.toString(), // Segment duration
-          '-hls_playlist_type', 'vod', // Video on Demand (complete segments)
-          '-hls_segment_filename', segmentPattern, // Segment filename pattern
-          '-hls_list_size', '0', // Keep all segments in playlist (0 = unlimited)
-          '-start_number', '0', // Start segment numbering from 0
-          '-hls_flags', 'independent_segments', // Each segment can be decoded independently
+          '-hls_time',
+          segmentDuration.toString(), // Segment duration
+          '-hls_playlist_type',
+          'vod', // Video on Demand (complete segments)
+          '-hls_segment_filename',
+          segmentPattern, // Segment filename pattern
+          '-hls_list_size',
+          '0', // Keep all segments in playlist (0 = unlimited)
+          '-start_number',
+          '0', // Start segment numbering from 0
+          '-hls_flags',
+          'independent_segments', // Each segment can be decoded independently
         ])
         .output(playlistPath)
         .on('start', (cmdline) => {

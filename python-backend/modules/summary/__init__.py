@@ -1,0 +1,1 @@
+"""Video summary module."""

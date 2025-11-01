@@ -132,19 +132,25 @@ export function VideoPlayer({
   }, [url, type, hls])
 
   return (
-    <div className="relative w-full bg-black rounded-lg overflow-hidden group">
+    <div className="relative w-full bg-black rounded-xl overflow-hidden shadow-2xl group">
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-900 to-black text-white z-10">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-2"></div>
-            <p>Loading video...</p>
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-white/20 border-t-white mx-auto mb-4"></div>
+            <p className="text-lg font-medium">Loading video...</p>
+            <p className="text-sm text-gray-400 mt-2">Please wait</p>
           </div>
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75 text-white p-4 text-center z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-red-900/90 to-black text-white p-4 text-center z-10">
           <div>
-            <p className="text-red-400 mb-2">{error}</p>
+            <div className="mb-4">
+              <svg className="w-16 h-16 mx-auto text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <p className="text-red-300 mb-4 text-lg">{error}</p>
             <button
               onClick={() => {
                 setError('')
@@ -153,7 +159,7 @@ export function VideoPlayer({
                   videoRef.current.load()
                 }
               }}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded"
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
             >
               Retry
             </button>
@@ -163,7 +169,7 @@ export function VideoPlayer({
       <video
         ref={videoRef}
         controls
-        className="w-full aspect-video"
+        className="w-full aspect-video bg-black"
         playsInline
         preload="metadata"
         crossOrigin="anonymous"

@@ -10,12 +10,13 @@ from config import get_settings
 from database.base import Base, engine
 from database.models import (
     OutboxEvent,
+    ProcessedMessage,
     Videos,
     VideoStatusLog,
     VideoSummary,
     VideoTranscript,
 )  # Import all models to register with Base
-from routers import health
+from modules.health.routers import health
 
 # Configure logging
 logging.basicConfig(
@@ -51,7 +52,7 @@ async def lifespan(app: FastAPI):
         if "already exists" in str(e).lower():
             logger.info("ℹ️ UUID extension already exists")
         else:
-            logger.warn(f"⚠️ Could not enable UUID extension: {str(e)}. Ensure it's enabled manually.")
+            logger.warning(f"⚠️ Could not enable UUID extension: {str(e)}. Ensure it's enabled manually.")
 
     # Synchronize database schema (create/update tables)
     if settings.db_sync:

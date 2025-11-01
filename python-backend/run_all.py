@@ -10,7 +10,6 @@ from multiprocessing import Process
 import uvicorn
 
 from config import get_settings
-from kafka_client.consumer import create_consumer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,7 +52,7 @@ def run_celery_worker():
             registered_tasks = list(celery_app.tasks.keys())
             logger.info(f"📋 Celery app has {len(registered_tasks)} registered tasks: {registered_tasks}")
         except Exception as e:
-            logger.warn(f"⚠️ Could not check registered tasks: {str(e)}")
+            logger.warning(f"⚠️ Could not check registered tasks: {str(e)}")
 
         # Run celery worker as subprocess (non-blocking with Popen)
         # Use sys.executable to ensure we use the same Python interpreter
@@ -114,35 +113,9 @@ def run_kafka_transcription_consumer():
     """Run Kafka consumer for video.transcoded events (transcription)."""
     logger.info("📨 Starting Kafka transcription consumer...")
     try:
-        from tasks.video_transcription import transcribe_video_task
-
-        def handle_video_transcoded(payload):
-            """Handler for video.transcoded Kafka events."""
-            event_id = payload.get("id")
-            video_id = payload.get("videoId")
-            variants = payload.get("variants", [])
-
-            logger.info(
-                f"📥 Received video.transcoded event: eventId={event_id}, videoId={video_id}, variants={len(variants)}"
-            )
-            logger.debug(f"Full payload: {payload}")
-
-            if not video_id:
-                logger.error(f"❌ Invalid payload: missing videoId. Payload: {payload}")
-                return
-
-            try:
-                # Queue Celery task for transcription
-                logger.info(f"🔄 Queuing transcription task for video {video_id}...")
-                task_result = transcribe_video_task.delay(payload)
-                logger.info(
-                    f"✅ Queued transcription task: videoId={video_id}, taskId={task_result.id}, taskState={task_result.state}"
-                )
-            except Exception as e:
-                logger.error(
-                    f"❌ Failed to queue transcription task for video {video_id}: {str(e)}",
-                    exc_info=True,
-                )
+        # Import handler from dedicated worker module to avoid code duplication
+        from modules.transcription.kafka_transcription_worker import handle_video_transcoded
+        from providers.kafka import create_consumer
 
         # Create and start consumer for video.transcoded
         logger.info("🔌 Creating Kafka consumer for topic: video.transcoded")
@@ -159,33 +132,17 @@ def run_kafka_summary_consumer():
     """Run Kafka consumer for video.transcribed events (summarization)."""
     logger.info("📨 Starting Kafka summary consumer...")
     try:
-        from tasks.video_summary import summarize_video_task
-
-        def handle_video_transcribed(payload):
-            """Handler for video.transcribed Kafka events."""
-            event_id = payload.get("id")
-            video_id = payload.get("videoId")
-
-            logger.info(
-                f"📥 Received video.transcribed event: eventId={event_id}, videoId={video_id}"
-            )
-
-            try:
-                # Queue Celery task
-                task_result = summarize_video_task.delay(payload)
-                logger.info(
-                    f"✅ Queued summarization task: videoId={video_id}, taskId={task_result.id}"
-                )
-            except Exception as e:
-                logger.error(
-                    f"❌ Failed to queue summarization task for video {video_id}: {str(e)}"
-                )
+        # Import handler from dedicated worker module to avoid code duplication
+        from modules.summary.kafka_worker import handle_video_transcribed
+        from providers.kafka import create_consumer
 
         # Create and start consumer for video.transcribed
+        logger.info("🔌 Creating Kafka consumer for topic: video.transcribed")
         consumer = create_consumer("video.transcribed", handle_video_transcribed)
+        logger.info("✅ Kafka consumer created, starting to consume...")
         consumer.consume()
     except Exception as e:
-        logger.error(f"Kafka summary consumer error: {str(e)}")
+        logger.error(f"❌ Kafka summary consumer error: {str(e)}", exc_info=True)
         import traceback
         traceback.print_exc()
 
